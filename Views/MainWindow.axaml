@@ -7,9 +7,9 @@
         x:Class="DvdRipper.Views.MainWindow"
         Width="600" Height="450"
         Title="DVD Ripper">
-  <Design.DataContext>
+  <!-- <Design.DataContext>
     <vm:MainWindowViewModel />
-  </Design.DataContext>
+  </Design.DataContext> -->
   <StackPanel Margin="10" Spacing="8">
     <!-- Device input -->
     <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
@@ -42,7 +42,7 @@
     <!-- Progress bar -->
     <ProgressBar Height="20" Minimum="0" Maximum="100"
                  Value="{Binding Progress}" />
-    <TextBlock Text="{Binding Progress, StringFormat=Progress: {0:F1}%}" />
+    <TextBlock Text="{Binding Progress, StringFormat='Progress: {0:F1}%}'" />
 
     <!-- Log box -->
     <TextBlock Text="Log:" />

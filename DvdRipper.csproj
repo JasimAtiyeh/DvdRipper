@@ -9,6 +9,7 @@
     <PublishTrimmed>false</PublishTrimmed>
     <InvariantGlobalization>true</InvariantGlobalization>
     <Nullable>enable</Nullable>
+    <AvaloniaUseItemTemplates>true</AvaloniaUseItemTemplates>
   </PropertyGroup>
 
   <ItemGroup>
