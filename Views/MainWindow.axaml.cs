@@ -1,11 +1,18 @@
 using Avalonia.Controls;
+using Avalonia.Markup.Xaml;
 
-namespace DvdRipper.Views;
-
-public partial class MainWindow : Window
+namespace DvdRipper.Views
 {
-    public MainWindow()
+    public partial class MainWindow : Window
     {
-        InitializeComponent();
+        public MainWindow()
+        {
+            InitializeComponent();
+        }
+
+        private void InitializeComponent()
+        {
+            AvaloniaXamlLoader.Load(this);
+        }
     }
 }

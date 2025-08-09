@@ -1,20 +1,54 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="using:DvdRipper.ViewModels"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:d="https://github.com/avaloniaui"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        xmlns:vm="clr-namespace:DvdRipper.ViewModels"
+        mc:Ignorable="d"
         x:Class="DvdRipper.Views.MainWindow"
-        x:DataType="vm:MainWindowViewModel"
-        Icon="/Assets/avalonia-logo.ico"
-        Title="DvdRipper">
+        Width="600" Height="450"
+        Title="DVD Ripper">
+  <Design.DataContext>
+    <vm:MainWindowViewModel />
+  </Design.DataContext>
+  <StackPanel Margin="10" Spacing="8">
+    <!-- Device input -->
+    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+      <TextBlock Text="DVD Device:" VerticalAlignment="Center" Width="80" />
+      <TextBox Width="200" Text="{Binding Device, Mode=TwoWay}" />
+    </StackPanel>
 
-    <Design.DataContext>
-        <!-- This only sets the DataContext for the previewer in an IDE,
-             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-        <vm:MainWindowViewModel/>
-    </Design.DataContext>
+    <!-- Title selector -->
+    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+      <TextBlock Text="Title:" VerticalAlignment="Center" Width="80" />
+      <ComboBox Width="200"
+                Items="{Binding Titles}"
+                SelectedItem="{Binding SelectedTitle, Mode=TwoWay}" />
+    </StackPanel>
 
-    <TextBlock Text="{Binding Greeting}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    <!-- Output path input -->
+    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+      <TextBlock Text="Output file:" VerticalAlignment="Center" Width="80" />
+      <TextBox Width="350" Text="{Binding OutputPath, Mode=TwoWay}" />
+    </StackPanel>
 
+    <!-- Buttons -->
+    <StackPanel Orientation="Horizontal" Spacing="6">
+      <Button Content="Scan Titles"
+              Command="{Binding ScanCommand}" />
+      <Button Content="Rip"
+              Command="{Binding RipCommand}" />
+    </StackPanel>
+
+    <!-- Progress bar -->
+    <ProgressBar Height="20" Minimum="0" Maximum="100"
+                 Value="{Binding Progress}" />
+    <TextBlock Text="{Binding Progress, StringFormat=Progress: {0:F1}%}" />
+
+    <!-- Log box -->
+    <TextBlock Text="Log:" />
+    <TextBox Text="{Binding Log}"
+             AcceptsReturn="True" IsReadOnly="True"
+             VerticalScrollBarVisibility="Auto"
+             Height="180" />
+  </StackPanel>
 </Window>
