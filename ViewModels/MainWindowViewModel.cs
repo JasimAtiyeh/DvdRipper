@@ -25,6 +25,7 @@ namespace DvdRipper.ViewModels
         private string _outputPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "movie.mkv");
         private double _progress;
         private string _log = string.Empty;
+        private readonly string _logFilePath = Path.Combine("./dvd_ripper_debug.txt");
         private bool _isBusy;
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -153,6 +154,20 @@ namespace DvdRipper.ViewModels
                 _log = _log.Substring(_log.Length - maxLength);
             }
             OnPropertyChanged(nameof(Log));
+
+            // Append to the file
+            try
+            {
+                // Ensure the directory exists and append text
+                Directory.CreateDirectory(Path.GetDirectoryName(_logFilePath)!);
+                File.AppendAllText(_logFilePath, message);
+            }
+            catch (Exception ex)
+            {
+                // In case the log file can’t be written, still report to UI
+                _log += $"[File log error: {ex.Message}]\n";
+                OnPropertyChanged(nameof(Log));
+            }
         }
 
         protected bool SetProperty<T>(ref T backingField, T value, [CallerMemberName] string propertyName = "")
