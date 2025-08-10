@@ -25,7 +25,7 @@ namespace DvdRipper.ViewModels
         private string _outputPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "movie.mkv");
         private double _progress;
         private string _log = string.Empty;
-        private readonly string _logFilePath = Path.Combine("./dvd_ripper_debug{0}.log", DateTime.Now.ToString());
+        private readonly string _logFilePath = Path.Combine("./dvd_ripper_debug_{0}.log", DateTime.Now.ToString());
         private bool _isBusy;
 
         public event PropertyChangedEventHandler? PropertyChanged;

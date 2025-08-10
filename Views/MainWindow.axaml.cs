@@ -9,6 +9,7 @@ namespace DvdRipper.Views
         public MainWindow()
         {
             InitializeComponent();
+            // dvdTitles.Items;
             Closing += (s, e) => (DataContext as MainWindowViewModel)?.CancelCurrentRip();
         }
 

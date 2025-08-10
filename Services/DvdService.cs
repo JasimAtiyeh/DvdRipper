@@ -46,10 +46,12 @@ namespace DvdRipper.Services
             {
                 // Attempt to parse lsdvd XML output for accurate durations.
                 string xml = await RunProcessWithOutputAsync(LsdvdPath, $"-Ox {device}");
+                Report(log, $"xml: {xml}", "DEBUG");
                 Report(log, "lsdvd returned XML; parsing…", "DEBUG");
                 if (!string.IsNullOrWhiteSpace(xml))
                 {
                     XDocument doc = XDocument.Parse(xml);
+                    Report(log, $"xml parsed: {doc}", "DEBUG");
                     foreach (XElement track in doc.Descendants("track"))
                     {
                         string? ixAttr = track.Element("ix")?.Value;
@@ -65,7 +67,7 @@ namespace DvdRipper.Services
                                     lenSeconds = (int)Math.Round(d);
                                 }
                             }
-                            titles.Add(new TitleInfo(ix));
+                            titles.Add(new TitleInfo(ix, lenSeconds));
                         }
                     }
                 }
@@ -80,8 +82,7 @@ namespace DvdRipper.Services
                 Report(log, "lsdvd failed or returned no titles; probing with mplayer…\n");
                 for (int i = 1; i <= 50; i++)
                 {
-                    string mplayerArgs =
-                        $"-really-quiet -identify -frames 0 -vo null -ao null -dvd-device {device} dvd://{i}";
+                    string mplayerArgs = $"-really-quiet -nocache -dvd-device {device} dvd://{i}";
                     Report(log, $"Running mplayer probe: mplayer {mplayerArgs}", "DEBUG");
                     try
                     {
@@ -100,7 +101,7 @@ namespace DvdRipper.Services
                                         int sec = (int)Math.Round(secs);
                                         if (sec > 0)
                                         {
-                                            titles.Add(new TitleInfo(i));
+                                            titles.Add(new TitleInfo(i, sec));
                                         }
                                     }
                                     break;
@@ -247,7 +248,7 @@ namespace DvdRipper.Services
             }
         }
 
-        private async Task RunMplayerDumpAsync(string device, int title, string rawFile, IProgress<string>? log, CancellationToken cancellationToken)
+        private static async Task RunMplayerDumpAsync(string device, int title, string rawFile, IProgress<string>? log, CancellationToken cancellationToken)
         {
             Report(log, $"Running mplayer fallback for title {title}…\n");
             string args = $"-really-quiet -nocache -dvd-device {device} dvd://{title} -dumpstream -dumpfile {rawFile}";

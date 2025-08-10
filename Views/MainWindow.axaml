@@ -1,34 +1,51 @@
-<Window xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="DvdRipper.Views.MainWindow"
-        Width="600" Height="450"
-        Title="DVD Ripper">
-  <!-- remove Design.DataContext and mc:Ignorable -->
+<Window
+  x:Class="DvdRipper.Views.MainWindow"
+  xmlns="https://github.com/avaloniaui"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  Title="DVD Ripper"
+  Width="600"
+  Height="450">
+  <!--  remove Design.DataContext and mc:Ignorable  -->
   <StackPanel Margin="10" Spacing="8">
     <StackPanel Orientation="Horizontal" Spacing="4">
-      <TextBlock Text="DVD Device:" Width="80" />
+      <TextBlock Width="80" Text="DVD Device:" />
       <TextBox Width="200" Text="{Binding Device, Mode=TwoWay}" />
     </StackPanel>
     <StackPanel Orientation="Horizontal" Spacing="4">
-      <TextBlock Text="Title:" Width="80" />
-      <ComboBox Width="200"
-                SelectedItem="{Binding SelectedTitle, Mode=TwoWay}" />
+      <TextBlock Width="80" Text="Title:" />
+      <ComboBox
+        x:Name="dvdTitles"
+        Width="200"
+        MaxDropDownHeight="300"
+        SelectedIndex="0"
+        SelectedItem="{Binding SelectedTitle, Mode=TwoWay}">
+        <ComboBox.ItemTemplate>
+          <DataTemplate>
+            <TextBlock Text="{Binding Name}" FontFamily="{Binding}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
     </StackPanel>
     <StackPanel Orientation="Horizontal" Spacing="4">
-      <TextBlock Text="Output file:" Width="80" />
+      <TextBlock Width="80" Text="Output file:" />
       <TextBox Width="350" Text="{Binding OutputPath, Mode=TwoWay}" />
     </StackPanel>
     <StackPanel Orientation="Horizontal" Spacing="6">
-      <Button Content="Scan Titles" Command="{Binding ScanCommand}" />
-      <Button Content="Rip"         Command="{Binding RipCommand}" />
+      <Button Command="{Binding ScanCommand}" Content="Scan Titles" />
+      <Button Command="{Binding RipCommand}" Content="Rip" />
     </StackPanel>
-    <ProgressBar Height="20" Minimum="0" Maximum="100"
-                 Value="{Binding Progress}" />
-    <!-- either quote the StringFormat or remove it entirely -->
+    <ProgressBar
+      Height="20"
+      Maximum="100"
+      Minimum="0"
+      Value="{Binding Progress}" />
+    <!--  either quote the StringFormat or remove it entirely  -->
     <TextBlock Text="{Binding Progress, StringFormat='Progress: {0:F1}%'}" />
-    <TextBlock Text="Log:"/>
-    <TextBox Text="{Binding Log}"
-             AcceptsReturn="True" IsReadOnly="True"
-             Height="180" />
+    <TextBlock Text="Log:" />
+    <TextBox
+      Height="180"
+      AcceptsReturn="True"
+      IsReadOnly="True"
+      Text="{Binding Log}" />
   </StackPanel>
 </Window>
