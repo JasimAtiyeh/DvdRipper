@@ -23,6 +23,7 @@ publish/
 
 # Logs
 *.log
+*.txt
 
 # Test results
 TestResults/
