@@ -25,7 +25,7 @@ namespace DvdRipper.ViewModels
         private string _outputPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "movie.mkv");
         private double _progress;
         private string _log = string.Empty;
-        private readonly string _logFilePath = Path.Combine("./dvd_ripper_debug.txt");
+        private readonly string _logFilePath = Path.Combine("./dvd_ripper_debug{0}.log", DateTime.Now.ToString());
         private bool _isBusy;
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -111,7 +111,7 @@ namespace DvdRipper.ViewModels
             {
                 IsBusy = true;
                 AppendLog($"Scanning titles on {Device}…\n");
-                var result = await _dvdService.ScanTitlesAsync(Device, new Progress<string>(AppendLog));
+                List<TitleInfo> result = await DvdService.ScanTitlesAsync(Device, new Progress<string>(AppendLog));
                 _syncContext.Post(_ =>
                 {
                     Titles = new ObservableCollection<TitleInfo>(result);
@@ -131,16 +131,18 @@ namespace DvdRipper.ViewModels
         private async Task RipAsync()
         {
             if (SelectedTitle == null) return;
+            IsBusy = true;
+            Progress = 0;
+            _cts?.Cancel();
+            _cts = new CancellationTokenSource();
+            CancellationToken token = _cts.Token;
+            AppendLog($"Starting rip of title {SelectedTitle.Number} to {OutputPath}\n");
+
             try
             {
-                IsBusy = true;
-                Progress = 0;
-                _cts?.Cancel();
-                _cts = new CancellationTokenSource();
-                AppendLog($"Starting rip of title {SelectedTitle.Number} to {OutputPath}\n");
-                var progress = new Progress<double>(v => _syncContext.Post(_ => Progress = v, null));
-                var logger = new Progress<string>(AppendLog);
-                await _dvdService.RipAsync(Device, SelectedTitle.Number, OutputPath, progress, logger, _cts.Token);
+                Progress<double> progress = new(v => _syncContext.Post(_ => Progress = v, null));
+                Progress<string> logger = new(AppendLog);
+                await _dvdService.RipAsync(Device, SelectedTitle.Number, OutputPath, progress, logger, token);
                 AppendLog("Rip completed.\n");
                 Progress = 100;
             }

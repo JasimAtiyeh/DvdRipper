@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -14,7 +15,7 @@ namespace DvdRipper.Services
     /// <summary>
     /// Encapsulates the command‑line interactions required to inspect and rip a DVD.
     /// </summary>
-    public class DvdService
+    public partial class DvdService
     {
         private const string LsdvdPath = "lsdvd";
         private const string MpvPath = "mpv";
@@ -28,44 +29,43 @@ namespace DvdRipper.Services
             log?.Report($"[{level}] {message}\n");
         }
 
-
         /// <summary>
         /// Scans the disc in <paramref name="device"/> for titles using lsdvd. If lsdvd
         /// reports unknown durations or fails, falls back to probing with mplayer.
         /// </summary>
-        public async Task<List<TitleInfo>> ScanTitlesAsync(string device, IProgress<string>? log = null)
+        public static async Task<List<TitleInfo>> ScanTitlesAsync(string device, IProgress<string>? log = null)
         {
             if (string.IsNullOrWhiteSpace(device)) throw new ArgumentException("Device must be provided.", nameof(device));
 
             Report(log, $"Scanning titles on {device}…\n");
-            var titles = new List<TitleInfo>();
+            List<TitleInfo> titles = [];
 
-            var cmd = $"{LsdvdPath} -Ox {device}";
+            string cmd = $"{LsdvdPath} -Ox {device}";
             Report(log, $"Running: {cmd}", "DEBUG");
             try
             {
                 // Attempt to parse lsdvd XML output for accurate durations.
-                var xml = await RunProcessWithOutputAsync(LsdvdPath, $"-Ox {device}");
+                string xml = await RunProcessWithOutputAsync(LsdvdPath, $"-Ox {device}");
                 Report(log, "lsdvd returned XML; parsing…", "DEBUG");
                 if (!string.IsNullOrWhiteSpace(xml))
                 {
-                    var doc = XDocument.Parse(xml);
-                    foreach (var track in doc.Descendants("track"))
+                    XDocument doc = XDocument.Parse(xml);
+                    foreach (XElement track in doc.Descendants("track"))
                     {
-                        var ixAttr = track.Element("ix")?.Value;
-                        var lenAttr = track.Element("length")?.Value;
+                        string? ixAttr = track.Element("ix")?.Value;
+                        string? lenAttr = track.Element("length")?.Value;
                         if (int.TryParse(ixAttr, out int ix))
                         {
                             int lenSeconds = 0;
                             if (!string.IsNullOrWhiteSpace(lenAttr))
                             {
                                 // length attribute may be floating point seconds.
-                                if (double.TryParse(lenAttr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double d))
+                                if (double.TryParse(lenAttr, NumberStyles.Float, CultureInfo.InvariantCulture, out double d))
                                 {
                                     lenSeconds = (int)Math.Round(d);
                                 }
                             }
-                            titles.Add(new TitleInfo(ix, lenSeconds));
+                            titles.Add(new TitleInfo(ix));
                         }
                     }
                 }
@@ -80,27 +80,27 @@ namespace DvdRipper.Services
                 Report(log, "lsdvd failed or returned no titles; probing with mplayer…\n");
                 for (int i = 1; i <= 50; i++)
                 {
-                    var mplayerArgs =
+                    string mplayerArgs =
                         $"-really-quiet -identify -frames 0 -vo null -ao null -dvd-device {device} dvd://{i}";
                     Report(log, $"Running mplayer probe: mplayer {mplayerArgs}", "DEBUG");
                     try
                     {
-                        var identify = await RunProcessWithOutputAsync(MplayerPath, $"-really-quiet -identify -frames 0 -vo null -ao null -dvd-device {device} dvd://{i}");
+                        string identify = await RunProcessWithOutputAsync(MplayerPath, $"-really-quiet -identify -frames 0 -vo null -ao null -dvd-device {device} dvd://{i}");
                         if (!string.IsNullOrWhiteSpace(identify))
                         {
                             // Parse ID_LENGTH= in seconds (floating point) and count as valid only if length > 0.
-                            var lines = identify.Split('\n');
-                            foreach (var line in lines)
+                            string[] lines = identify.Split('\n');
+                            foreach (string line in lines)
                             {
                                 if (line.StartsWith("ID_LENGTH="))
                                 {
-                                    var val = line.Substring("ID_LENGTH=".Length);
-                                    if (double.TryParse(val, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double secs))
+                                    string val = line["ID_LENGTH=".Length..];
+                                    if (double.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out double secs))
                                     {
                                         int sec = (int)Math.Round(secs);
                                         if (sec > 0)
                                         {
-                                            titles.Add(new TitleInfo(i, sec));
+                                            titles.Add(new TitleInfo(i));
                                         }
                                     }
                                     break;
@@ -116,7 +116,7 @@ namespace DvdRipper.Services
                 }
             }
             // Order by number and return
-            titles = titles.OrderBy(t => t.Number).ToList();
+            titles = [.. titles.OrderBy(t => t.Number)];
             Report(log, $"Found {titles.Count} title(s).\n");
             return titles;
         }
@@ -129,16 +129,16 @@ namespace DvdRipper.Services
         public async Task RipAsync(string device, int titleNumber, string outputPath, IProgress<double>? progress = null, IProgress<string>? log = null, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(device)) throw new ArgumentException("Device must be provided.", nameof(device));
-            if (titleNumber <= 0) throw new ArgumentOutOfRangeException(nameof(titleNumber));
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(titleNumber);
             if (string.IsNullOrWhiteSpace(outputPath)) throw new ArgumentException("Output path must be provided.", nameof(outputPath));
 
-            var rawFile = Path.Combine(Path.GetTempPath(), $"dvd_title{titleNumber}_{Guid.NewGuid():N}.vob");
+            string rawFile = Path.Combine(Path.GetTempPath(), $"dvd_title{titleNumber}_{Guid.NewGuid():N}.vob");
             try
             {
                 Report(log, $"Ripping title {titleNumber} from {device}…\n");
                 // Start mpv dumping process.
-                var mpvArgs = string.Join(' ', new[]
-                {
+                string mpvArgs = string.Join(' ',
+                [
                     "--no-config",
                     "--really-quiet",
                     "--ao=null",
@@ -150,14 +150,13 @@ namespace DvdRipper.Services
                     $"--dvd-device {device}",
                     $"dvd://{titleNumber}",
                     $"--stream-record={rawFile}"
-                });
+                ]);
                 Report(log, $"Starting mpv with args: {mpvArgs}", "DEBUG");
 
                 Process? mpv = null;
                 try
                 {
-
-                    mpv = new System.Diagnostics.Process();
+                    mpv = new Process();
                     mpv.StartInfo.FileName = MpvPath;
                     mpv.StartInfo.Arguments = mpvArgs;
                     mpv.StartInfo.RedirectStandardError = true;
@@ -166,15 +165,15 @@ namespace DvdRipper.Services
 
                     // We'll monitor bytes written for stall detection.
                     long lastBytes = 0;
-                    var progressPattern = new Regex(@"\[progress\]\s+(\d+(?:\.\d+)?)%", RegexOptions.Compiled);
-                    var lastUpdateTime = DateTime.UtcNow;
+                    Regex progressPattern = MyRegex();
+                    DateTime lastUpdateTime = DateTime.UtcNow;
 
                     mpv.ErrorDataReceived += (s, e) =>
                     {
                         if (e.Data == null) return;
                         // Parse mpv progress output
-                        var match = progressPattern.Match(e.Data);
-                        if (match.Success && double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double pct))
+                        Match match = progressPattern.Match(e.Data);
+                        if (match.Success && double.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double pct))
                         {
                             progress?.Report(pct);
                             lastUpdateTime = DateTime.UtcNow;
@@ -251,9 +250,10 @@ namespace DvdRipper.Services
         private async Task RunMplayerDumpAsync(string device, int title, string rawFile, IProgress<string>? log, CancellationToken cancellationToken)
         {
             Report(log, $"Running mplayer fallback for title {title}…\n");
-            var args = $"-really-quiet -ao null -vo null -nocache -dvd-device {device} dvd://{title} -dumpstream -dumpfile {rawFile}";
+            string args = $"-really-quiet -nocache -dvd-device {device} dvd://{title} -dumpstream -dumpfile {rawFile}";
             Report(log, $"Running mplayer dump: mplayer {args}", "DEBUG");
-            var output = await RunProcessWithOutputAsync(MplayerPath, args, log, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            await RunProcessWithOutputAsync(MplayerPath, args, log, cancellationToken);
             Report(log, "mplayer finished dumping.", "DEBUG");
         }
 
@@ -265,7 +265,7 @@ namespace DvdRipper.Services
             // Try mkvmerge first
             try
             {
-                var mkvArgs = $"-q -o {EscapeArg(outputPath)} {EscapeArg(rawFile)}";
+                string mkvArgs = $"-q -o {EscapeArg(outputPath)} {EscapeArg(rawFile)}";
                 Report(log, $"Running mkvmerge: mkvmerge {mkvArgs}", "DEBUG");
                 try
                 {
@@ -283,7 +283,7 @@ namespace DvdRipper.Services
                 Report(log, "mkvmerge failed; falling back to ffmpeg…\n");
             }
             // ffmpeg fallback
-            var ffArgs = $"-hide_banner -loglevel warning -fflags +genpts+igndts -avoid_negative_ts make_zero -muxpreload 0 -muxdelay 0 -i {EscapeArg(rawFile)} -map 0:v:0 -map 0:a -map 0:s? -c copy {EscapeArg(outputPath)}";
+            string ffArgs = $"-hide_banner -loglevel warning -fflags +genpts+igndts -avoid_negative_ts make_zero -muxpreload 0 -muxdelay 0 -i {EscapeArg(rawFile)} -map 0:v:0 -map 0:a -map 0:s? -c copy {EscapeArg(outputPath)}";
             Report(log, $"Running ffmpeg: ffmpeg {ffArgs}", "DEBUG");
             await RunProcessAsync(FfmpegPath, ffArgs, log, cancellationToken);
             Report(log, "ffmpeg remux completed successfully.", "INFO");
@@ -295,10 +295,10 @@ namespace DvdRipper.Services
             return '"' + arg.Replace("\"", "\\\"") + '"';
         }
 
-        private async Task<string> RunProcessWithOutputAsync(string fileName, string args, IProgress<string>? log = null, CancellationToken cancellationToken = default)
+        private static async Task<string> RunProcessWithOutputAsync(string fileName, string args, IProgress<string>? log = null, CancellationToken cancellationToken = default)
         {
             Report(log, $"Spawning: {fileName} {args}", "DEBUG");
-            using var proc = new System.Diagnostics.Process();
+            using Process proc = new();
             proc.StartInfo.FileName = fileName;
             proc.StartInfo.Arguments = args;
             proc.StartInfo.UseShellExecute = false;
@@ -314,8 +314,8 @@ namespace DvdRipper.Services
 
             proc.EnableRaisingEvents = true;
             proc.Start();
-            var stdOut = new List<string>();
-            var stdErr = new List<string>();
+            List<string> stdOut = [];
+            List<string> stdErr = [];
             proc.OutputDataReceived += (s, e) => { if (e.Data != null) stdOut.Add(e.Data); };
             proc.ErrorDataReceived += (s, e) => { if (e.Data != null) stdErr.Add(e.Data); Report(log, e.Data + "\n"); };
             proc.BeginOutputReadLine();
@@ -330,10 +330,10 @@ namespace DvdRipper.Services
             return string.Join("\n", stdOut);
         }
 
-        private async Task RunProcessAsync(string fileName, string args, IProgress<string>? log = null, CancellationToken cancellationToken = default)
+        private static async Task RunProcessAsync(string fileName, string args, IProgress<string>? log = null, CancellationToken cancellationToken = default)
         {
             Report(log, $"Spawning: {fileName} {args}", "DEBUG");
-            using var proc = new System.Diagnostics.Process();
+            using Process proc = new();
             proc.StartInfo.FileName = fileName;
             proc.StartInfo.Arguments = args;
             proc.StartInfo.UseShellExecute = false;
@@ -359,5 +359,8 @@ namespace DvdRipper.Services
                 throw new InvalidOperationException($"Process {fileName} exited with code {proc.ExitCode}.");
             }
         }
+
+        [GeneratedRegex(@"\[progress\]\s+(\d+(?:\.\d+)?)%", RegexOptions.Compiled)]
+        private static partial Regex MyRegex();
     }
 }

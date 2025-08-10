@@ -18,7 +18,7 @@ namespace DvdRipper
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
                 // Create and assign the main view model.
-                var mainViewModel = new MainWindowViewModel();
+                MainWindowViewModel mainViewModel = new();
                 desktop.MainWindow = new MainWindow
                 {
                     DataContext = mainViewModel
