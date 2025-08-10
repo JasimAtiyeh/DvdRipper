@@ -97,6 +97,14 @@ namespace DvdRipper.ViewModels
         public ICommand ScanCommand { get; }
         public ICommand RipCommand { get; }
 
+        private CancellationTokenSource? _cts;
+
+        public void CancelCurrentRip()
+        {
+            _cts?.Cancel();
+            _cts = null;
+        }
+
         private async Task ScanAsync()
         {
             try
@@ -127,10 +135,12 @@ namespace DvdRipper.ViewModels
             {
                 IsBusy = true;
                 Progress = 0;
+                _cts?.Cancel();
+                _cts = new CancellationTokenSource();
                 AppendLog($"Starting rip of title {SelectedTitle.Number} to {OutputPath}\n");
                 var progress = new Progress<double>(v => _syncContext.Post(_ => Progress = v, null));
                 var logger = new Progress<string>(AppendLog);
-                await _dvdService.RipAsync(Device, SelectedTitle.Number, OutputPath, progress, logger);
+                await _dvdService.RipAsync(Device, SelectedTitle.Number, OutputPath, progress, logger, _cts.Token);
                 AppendLog("Rip completed.\n");
                 Progress = 100;
             }

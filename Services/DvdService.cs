@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -21,6 +22,13 @@ namespace DvdRipper.Services
         private const string MkvMergePath = "mkvmerge";
         private const string FfmpegPath = "ffmpeg";
 
+        // New helper: prefix log messages with a level (INFO/DEBUG/ERROR)
+        private static void Report(IProgress<string>? log, string message, string level = "INFO")
+        {
+            log?.Report($"[{level}] {message}\n");
+        }
+
+
         /// <summary>
         /// Scans the disc in <paramref name="device"/> for titles using lsdvd. If lsdvd
         /// reports unknown durations or fails, falls back to probing with mplayer.
@@ -29,12 +37,16 @@ namespace DvdRipper.Services
         {
             if (string.IsNullOrWhiteSpace(device)) throw new ArgumentException("Device must be provided.", nameof(device));
 
-            log?.Report($"Scanning titles on {device}…\n");
+            Report(log, $"Scanning titles on {device}…\n");
             var titles = new List<TitleInfo>();
+
+            var cmd = $"{LsdvdPath} -Ox {device}";
+            Report(log, $"Running: {cmd}", "DEBUG");
             try
             {
                 // Attempt to parse lsdvd XML output for accurate durations.
                 var xml = await RunProcessWithOutputAsync(LsdvdPath, $"-Ox {device}");
+                Report(log, "lsdvd returned XML; parsing…", "DEBUG");
                 if (!string.IsNullOrWhiteSpace(xml))
                 {
                     var doc = XDocument.Parse(xml);
@@ -58,16 +70,19 @@ namespace DvdRipper.Services
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // ignore and fallback
+                Report(log, $"lsdvd error: {ex.Message}", "ERROR");
             }
             if (titles.Count == 0)
             {
                 // Fallback: probe first 50 titles with mplayer.
-                log?.Report("lsdvd failed or returned no titles; probing with mplayer…\n");
+                Report(log, "lsdvd failed or returned no titles; probing with mplayer…\n");
                 for (int i = 1; i <= 50; i++)
                 {
+                    var mplayerArgs =
+                        $"-really-quiet -identify -frames 0 -vo null -ao null -dvd-device {device} dvd://{i}";
+                    Report(log, $"Running mplayer probe: mplayer {mplayerArgs}", "DEBUG");
                     try
                     {
                         var identify = await RunProcessWithOutputAsync(MplayerPath, $"-really-quiet -identify -frames 0 -vo null -ao null -dvd-device {device} dvd://{i}");
@@ -93,15 +108,16 @@ namespace DvdRipper.Services
                             }
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
+                        Report(log, $"mplayer error: {ex.Message}", "ERROR");
                         // ignore errors probing individual titles
                     }
                 }
             }
             // Order by number and return
             titles = titles.OrderBy(t => t.Number).ToList();
-            log?.Report($"Found {titles.Count} title(s).\n");
+            Report(log, $"Found {titles.Count} title(s).\n");
             return titles;
         }
 
@@ -119,7 +135,7 @@ namespace DvdRipper.Services
             var rawFile = Path.Combine(Path.GetTempPath(), $"dvd_title{titleNumber}_{Guid.NewGuid():N}.vob");
             try
             {
-                log?.Report($"Ripping title {titleNumber} from {device}…\n");
+                Report(log, $"Ripping title {titleNumber} from {device}…\n");
                 // Start mpv dumping process.
                 var mpvArgs = string.Join(' ', new[]
                 {
@@ -135,67 +151,86 @@ namespace DvdRipper.Services
                     $"dvd://{titleNumber}",
                     $"--stream-record={rawFile}"
                 });
-                using var mpv = new System.Diagnostics.Process();
-                mpv.StartInfo.FileName = MpvPath;
-                mpv.StartInfo.Arguments = mpvArgs;
-                mpv.StartInfo.RedirectStandardError = true;
-                mpv.StartInfo.UseShellExecute = false;
-                mpv.EnableRaisingEvents = true;
+                Report(log, $"Starting mpv with args: {mpvArgs}", "DEBUG");
 
-                // We'll monitor bytes written for stall detection.
-                long lastBytes = 0;
-                var progressPattern = new Regex(@"\[progress\]\s+(\d+(?:\.\d+)?)%", RegexOptions.Compiled);
-                var lastUpdateTime = DateTime.UtcNow;
-
-                mpv.ErrorDataReceived += (s, e) =>
+                Process? mpv = null;
+                try
                 {
-                    if (e.Data == null) return;
-                    // Parse mpv progress output
-                    var match = progressPattern.Match(e.Data);
-                    if (match.Success && double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double pct))
-                    {
-                        progress?.Report(pct);
-                        lastUpdateTime = DateTime.UtcNow;
-                    }
-                    // Write log lines for debugging/troubleshooting.
-                    log?.Report(e.Data + "\n");
-                };
 
-                mpv.Start();
-                mpv.BeginErrorReadLine();
+                    mpv = new System.Diagnostics.Process();
+                    mpv.StartInfo.FileName = MpvPath;
+                    mpv.StartInfo.Arguments = mpvArgs;
+                    mpv.StartInfo.RedirectStandardError = true;
+                    mpv.StartInfo.UseShellExecute = false;
+                    mpv.EnableRaisingEvents = true;
 
-                // Monitor progress to detect stalls.
-                while (!mpv.HasExited)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    await Task.Delay(500, cancellationToken);
-                    // Check file size
-                    if (File.Exists(rawFile))
+                    // We'll monitor bytes written for stall detection.
+                    long lastBytes = 0;
+                    var progressPattern = new Regex(@"\[progress\]\s+(\d+(?:\.\d+)?)%", RegexOptions.Compiled);
+                    var lastUpdateTime = DateTime.UtcNow;
+
+                    mpv.ErrorDataReceived += (s, e) =>
                     {
-                        long size = new FileInfo(rawFile).Length;
-                        if (size > lastBytes)
+                        if (e.Data == null) return;
+                        // Parse mpv progress output
+                        var match = progressPattern.Match(e.Data);
+                        if (match.Success && double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double pct))
                         {
-                            lastBytes = size;
+                            progress?.Report(pct);
                             lastUpdateTime = DateTime.UtcNow;
                         }
-                    }
-                    // If no progress for 10 seconds (neither progress update nor file growth) then kill and fallback
-                    if ((DateTime.UtcNow - lastUpdateTime).TotalSeconds > 10)
+                        // Write log lines for debugging/troubleshooting.
+                        Report(log, $"mpv: {e.Data}", "DEBUG");
+                    };
+
+                    mpv.Start();
+                    mpv.BeginErrorReadLine();
+
+                    // Monitor progress to detect stalls.
+                    while (!mpv.HasExited)
                     {
-                        log?.Report("mpv appears stalled; falling back to mplayer…\n");
-                        try { mpv.Kill(); } catch { }
-                        break;
+                        cancellationToken.ThrowIfCancellationRequested();
+                        await Task.Delay(500, cancellationToken);
+                        // Check file size
+                        if (File.Exists(rawFile))
+                        {
+                            long size = new FileInfo(rawFile).Length;
+                            if (size > lastBytes)
+                            {
+                                lastBytes = size;
+                                lastUpdateTime = DateTime.UtcNow;
+                            }
+                        }
+                        // If no progress for 10 seconds (neither progress update nor file growth) then kill and fallback
+                        if ((DateTime.UtcNow - lastUpdateTime).TotalSeconds > 10)
+                        {
+                            Report(log, "mpv appears stalled; falling back to mplayer…\n");
+                            try { mpv.Kill(); } catch { }
+                            break;
+                        }
                     }
+                    if (!mpv.HasExited)
+                    {
+                        // Wait for graceful exit
+                        cancellationToken.ThrowIfCancellationRequested();
+                        await Task.Delay(500, cancellationToken);
+                        await mpv.WaitForExitAsync(cancellationToken);
+                    }
+
+                    Report(log, $"mpv exit code: {mpv.ExitCode}", "DEBUG");
                 }
-                if (!mpv.HasExited)
+                catch (OperationCanceledException)
                 {
-                    // Wait for graceful exit
-                    await mpv.WaitForExitAsync(cancellationToken);
+                    // Cancelled: ensure the process is terminated
+                    try { if (mpv != null && !mpv.HasExited) mpv.Kill(); } catch { }
+                    throw;  // rethrow so caller knows it was cancelled
                 }
+
 
                 // If file still empty, fallback to mplayer
                 if (!File.Exists(rawFile) || new FileInfo(rawFile).Length == 0)
                 {
+                    Report(log, "mpv produced no output; switching to mplayer…", "INFO");
                     await RunMplayerDumpAsync(device, titleNumber, rawFile, log, cancellationToken);
                 }
 
@@ -215,33 +250,43 @@ namespace DvdRipper.Services
 
         private async Task RunMplayerDumpAsync(string device, int title, string rawFile, IProgress<string>? log, CancellationToken cancellationToken)
         {
-            log?.Report($"Running mplayer fallback for title {title}…\n");
-            var args = $"-really-quiet -nocache -dvd-device {device} dvd://{title} -dumpstream -dumpfile {rawFile}";
+            Report(log, $"Running mplayer fallback for title {title}…\n");
+            var args = $"-really-quiet -ao null -vo null -nocache -dvd-device {device} dvd://{title} -dumpstream -dumpfile {rawFile}";
+            Report(log, $"Running mplayer dump: mplayer {args}", "DEBUG");
             var output = await RunProcessWithOutputAsync(MplayerPath, args, log, cancellationToken);
-            log?.Report("mplayer finished.\n");
+            Report(log, "mplayer finished dumping.", "DEBUG");
         }
 
         private async Task RemuxAsync(string rawFile, string outputPath, IProgress<string>? log, CancellationToken cancellationToken)
         {
             // Ensure directory exists
             Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
-            log?.Report($"Remuxing to {outputPath}…\n");
+            Report(log, $"Remuxing to {outputPath}…\n");
             // Try mkvmerge first
             try
             {
                 var mkvArgs = $"-q -o {EscapeArg(outputPath)} {EscapeArg(rawFile)}";
-                await RunProcessAsync(MkvMergePath, mkvArgs, log, cancellationToken);
-                log?.Report("mkvmerge completed successfully.\n");
-                return;
+                Report(log, $"Running mkvmerge: mkvmerge {mkvArgs}", "DEBUG");
+                try
+                {
+                    await RunProcessAsync(MkvMergePath, mkvArgs, log, cancellationToken);
+                    Report(log, "mkvmerge completed successfully.", "INFO");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Report(log, $"mkvmerge error: {ex.Message}", "ERROR");
+                }
             }
             catch
             {
-                log?.Report("mkvmerge failed; falling back to ffmpeg…\n");
+                Report(log, "mkvmerge failed; falling back to ffmpeg…\n");
             }
             // ffmpeg fallback
             var ffArgs = $"-hide_banner -loglevel warning -fflags +genpts+igndts -avoid_negative_ts make_zero -muxpreload 0 -muxdelay 0 -i {EscapeArg(rawFile)} -map 0:v:0 -map 0:a -map 0:s? -c copy {EscapeArg(outputPath)}";
+            Report(log, $"Running ffmpeg: ffmpeg {ffArgs}", "DEBUG");
             await RunProcessAsync(FfmpegPath, ffArgs, log, cancellationToken);
-            log?.Report("ffmpeg remux completed successfully.\n");
+            Report(log, "ffmpeg remux completed successfully.", "INFO");
         }
 
         private static string EscapeArg(string arg)
@@ -252,6 +297,7 @@ namespace DvdRipper.Services
 
         private async Task<string> RunProcessWithOutputAsync(string fileName, string args, IProgress<string>? log = null, CancellationToken cancellationToken = default)
         {
+            Report(log, $"Spawning: {fileName} {args}", "DEBUG");
             using var proc = new System.Diagnostics.Process();
             proc.StartInfo.FileName = fileName;
             proc.StartInfo.Arguments = args;
@@ -259,15 +305,23 @@ namespace DvdRipper.Services
             proc.StartInfo.RedirectStandardOutput = true;
             proc.StartInfo.RedirectStandardError = true;
             proc.StartInfo.CreateNoWindow = true;
+
+            // Kill the process if the token is cancelled
+            cancellationToken.Register(() =>
+            {
+                try { if (!proc.HasExited) proc.Kill(); } catch { }
+            });
+
             proc.EnableRaisingEvents = true;
             proc.Start();
             var stdOut = new List<string>();
             var stdErr = new List<string>();
             proc.OutputDataReceived += (s, e) => { if (e.Data != null) stdOut.Add(e.Data); };
-            proc.ErrorDataReceived += (s, e) => { if (e.Data != null) stdErr.Add(e.Data); log?.Report(e.Data + "\n"); };
+            proc.ErrorDataReceived += (s, e) => { if (e.Data != null) stdErr.Add(e.Data); Report(log, e.Data + "\n"); };
             proc.BeginOutputReadLine();
             proc.BeginErrorReadLine();
             await proc.WaitForExitAsync(cancellationToken);
+            Report(log, $"{fileName} exited with code {proc.ExitCode}", "DEBUG");
             if (proc.ExitCode != 0)
             {
                 // include stderr in exception message
@@ -278,6 +332,7 @@ namespace DvdRipper.Services
 
         private async Task RunProcessAsync(string fileName, string args, IProgress<string>? log = null, CancellationToken cancellationToken = default)
         {
+            Report(log, $"Spawning: {fileName} {args}", "DEBUG");
             using var proc = new System.Diagnostics.Process();
             proc.StartInfo.FileName = fileName;
             proc.StartInfo.Arguments = args;
@@ -286,12 +341,19 @@ namespace DvdRipper.Services
             proc.StartInfo.RedirectStandardOutput = true;
             proc.StartInfo.CreateNoWindow = true;
             proc.EnableRaisingEvents = true;
-            proc.ErrorDataReceived += (s, e) => { if (e.Data != null) log?.Report(e.Data + "\n"); };
-            proc.OutputDataReceived += (s, e) => { if (e.Data != null) log?.Report(e.Data + "\n"); };
+            proc.ErrorDataReceived += (s, e) => { if (e.Data != null) Report(log, e.Data + "\n"); };
+            proc.OutputDataReceived += (s, e) => { if (e.Data != null) Report(log, e.Data + "\n"); };
+
+            cancellationToken.Register(() =>
+            {
+                try { if (!proc.HasExited) proc.Kill(); } catch { }
+            });
+
             proc.Start();
             proc.BeginErrorReadLine();
             proc.BeginOutputReadLine();
             await proc.WaitForExitAsync(cancellationToken);
+            Report(log, $"{fileName} exited with code {proc.ExitCode}", "DEBUG");
             if (proc.ExitCode != 0)
             {
                 throw new InvalidOperationException($"Process {fileName} exited with code {proc.ExitCode}.");
