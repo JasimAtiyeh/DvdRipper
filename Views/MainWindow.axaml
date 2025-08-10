@@ -1,54 +1,34 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="https://github.com/avaloniaui"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:vm="clr-namespace:DvdRipper.ViewModels"
-        mc:Ignorable="d"
         x:Class="DvdRipper.Views.MainWindow"
         Width="600" Height="450"
         Title="DVD Ripper">
-  <!-- <Design.DataContext>
-    <vm:MainWindowViewModel />
-  </Design.DataContext> -->
+  <!-- remove Design.DataContext and mc:Ignorable -->
   <StackPanel Margin="10" Spacing="8">
-    <!-- Device input -->
-    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-      <TextBlock Text="DVD Device:" VerticalAlignment="Center" Width="80" />
+    <StackPanel Orientation="Horizontal" Spacing="4">
+      <TextBlock Text="DVD Device:" Width="80" />
       <TextBox Width="200" Text="{Binding Device, Mode=TwoWay}" />
     </StackPanel>
-
-    <!-- Title selector -->
-    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-      <TextBlock Text="Title:" VerticalAlignment="Center" Width="80" />
+    <StackPanel Orientation="Horizontal" Spacing="4">
+      <TextBlock Text="Title:" Width="80" />
       <ComboBox Width="200"
-                Items="{Binding Titles}"
                 SelectedItem="{Binding SelectedTitle, Mode=TwoWay}" />
     </StackPanel>
-
-    <!-- Output path input -->
-    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-      <TextBlock Text="Output file:" VerticalAlignment="Center" Width="80" />
+    <StackPanel Orientation="Horizontal" Spacing="4">
+      <TextBlock Text="Output file:" Width="80" />
       <TextBox Width="350" Text="{Binding OutputPath, Mode=TwoWay}" />
     </StackPanel>
-
-    <!-- Buttons -->
     <StackPanel Orientation="Horizontal" Spacing="6">
-      <Button Content="Scan Titles"
-              Command="{Binding ScanCommand}" />
-      <Button Content="Rip"
-              Command="{Binding RipCommand}" />
+      <Button Content="Scan Titles" Command="{Binding ScanCommand}" />
+      <Button Content="Rip"         Command="{Binding RipCommand}" />
     </StackPanel>
-
-    <!-- Progress bar -->
     <ProgressBar Height="20" Minimum="0" Maximum="100"
                  Value="{Binding Progress}" />
-    <TextBlock Text="{Binding Progress, StringFormat='Progress: {0:F1}%}'" />
-
-    <!-- Log box -->
-    <TextBlock Text="Log:" />
+    <!-- either quote the StringFormat or remove it entirely -->
+    <TextBlock Text="{Binding Progress, StringFormat='Progress: {0:F1}%'}" />
+    <TextBlock Text="Log:"/>
     <TextBox Text="{Binding Log}"
              AcceptsReturn="True" IsReadOnly="True"
-             VerticalScrollBarVisibility="Auto"
              Height="180" />
   </StackPanel>
 </Window>

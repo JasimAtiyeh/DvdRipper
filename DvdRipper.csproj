@@ -1,19 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
-    <!-- Target .NET 8.0 so users can run this on recent LTS releases. -->
     <TargetFramework>net8.0</TargetFramework>
-    <!-- Publish as a single executable when the user runs dotnet publish. -->
     <OutputType>WinExe</OutputType>
-    <PublishSingleFile>true</PublishSingleFile>
-    <PublishTrimmed>false</PublishTrimmed>
-    <InvariantGlobalization>true</InvariantGlobalization>
-    <Nullable>enable</Nullable>
     <AvaloniaUseItemTemplates>true</AvaloniaUseItemTemplates>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Avalonia packages provide cross‑platform UI components. -->
     <PackageReference Include="Avalonia" Version="11.3.3" />
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.3" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.3" />
@@ -21,5 +14,4 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.3" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
   </ItemGroup>
-
 </Project>
